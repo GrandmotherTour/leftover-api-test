@@ -1,0 +1,17 @@
+{
+  "name": "leftover",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file=.env server.ts",
+    "spots": "tsx --env-file=.env spots.ts",
+    "realtime": "tsx --env-file=.env realtime.ts",
+    "directions": "tsx --env-file=.env directions.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^7.0.2"
+  }
+}

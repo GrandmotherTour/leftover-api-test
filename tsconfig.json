@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+
+    // tsx 로 실행하므로 .ts 확장자를 그대로 import 한다
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+
+    "strict": true,
+    "skipLibCheck": true,
+    "types": ["node"]
+  },
+  "include": ["*.ts"]
+}

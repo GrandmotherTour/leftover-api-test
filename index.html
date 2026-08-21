@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>leftover · API 테스트</title>
+
+<!-- 카카오 지도 SDK. appkey는 server.ts가 .env의 KAKAO_JS_KEY로 치환해서 내려준다 -->
+<script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=__KAKAO_JS_KEY__&autoload=false"></script>
+
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font: 14px/1.6 -apple-system, "Apple SD Gothic Neo", sans-serif;
+    color: #1a1a1a; background: #f4f5f7;
+  }
+  header { background: #fff; border-bottom: 1px solid #e2e4e8; padding: 14px 20px; }
+  h1 { margin: 0 0 12px; font-size: 16px; letter-spacing: -0.2px; }
+  h1 span { color: #999; font-weight: 400; margin-left: 8px; font-size: 13px; }
+
+  .loc { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .loc input { width: 108px; padding: 6px 8px; border: 1px solid #d6d9df; border-radius: 6px; font: inherit; font-size: 13px; }
+  .loc label { font-size: 12px; color: #777; }
+  .preset { padding: 6px 11px; border: 1px solid #d6d9df; background: #fff; border-radius: 6px; cursor: pointer; font: inherit; font-size: 13px; }
+  .preset:hover { background: #f0f1f3; }
+
+  nav { display: flex; gap: 4px; padding: 0 20px; background: #fff; border-bottom: 1px solid #e2e4e8; }
+  nav button {
+    padding: 11px 16px; border: 0; background: none; cursor: pointer;
+    font: inherit; font-size: 13px; color: #888; border-bottom: 2px solid transparent;
+  }
+  nav button.on { color: #1a1a1a; font-weight: 600; border-bottom-color: #2b6cf6; }
+
+  main { display: grid; grid-template-columns: 390px 1fr; gap: 12px; padding: 12px 20px; align-items: start; }
+  .panel { background: #fff; border: 1px solid #e2e4e8; border-radius: 8px; overflow: hidden; }
+  .panel > h2 {
+    margin: 0; padding: 10px 14px; font-size: 12px; font-weight: 600; color: #666;
+    background: #fafbfc; border-bottom: 1px solid #e2e4e8; letter-spacing: 0.2px;
+  }
+  #map { height: 520px; }
+  .map-err { padding: 30px 20px; text-align: center; color: #999; font-size: 13px; line-height: 1.8; }
+
+  .actions { padding: 12px 14px; border-bottom: 1px solid #eceef1; }
+  .go {
+    width: 100%; padding: 9px; border: 0; border-radius: 6px;
+    background: #2b6cf6; color: #fff; font: inherit; font-weight: 600; cursor: pointer;
+  }
+  .go:hover { background: #1f5ce0; }
+  .go:disabled { background: #c8cdd6; cursor: default; }
+  .hint { margin-top: 8px; font-size: 12px; color: #999; }
+  .chk { margin-top: 9px; font-size: 12.5px; color: #555; display: flex; align-items: center; gap: 6px; }
+  .chk input { margin: 0; }
+  .clear {
+    margin-left: auto; font-size: 12px; color: #2b6cf6; background: none;
+    border: 0; cursor: pointer; padding: 0; font-family: inherit;
+  }
+
+  .list { max-height: 400px; overflow-y: auto; }
+  .spot { padding: 10px 14px; border-bottom: 1px solid #f0f1f3; cursor: pointer; display: flex; gap: 9px; align-items: flex-start; }
+  .spot:hover { background: #f7f9fc; }
+  .spot.sel { background: #eaf1fe; }
+  .spot .nm { font-weight: 600; font-size: 13px; }
+  .spot .meta { font-size: 12px; color: #888; margin-top: 2px; }
+  .ord {
+    flex: 0 0 20px; height: 20px; border-radius: 50%; margin-top: 2px;
+    background: #2b6cf6; color: #fff; font-size: 11px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .ord.off { background: #eceef1; color: #b8bcc4; }
+  .tag { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; margin-right: 5px; }
+  .tag.kakao { background: #fef0c8; color: #8a6100; }
+  .tag.tour  { background: #dcefe0; color: #1c6b34; }
+  .empty { padding: 28px 14px; text-align: center; color: #aaa; font-size: 13px; line-height: 1.8; }
+
+  .cards { padding: 12px 14px; display: grid; gap: 10px; }
+  .card { border: 1px solid #e8eaee; border-radius: 7px; padding: 11px 13px; }
+  .card .k { font-size: 11px; color: #999; }
+  .card .v { font-size: 19px; font-weight: 700; margin-top: 2px; }
+  .card .s { font-size: 12px; color: #777; margin-top: 4px; }
+
+  /* ── 경로 타임라인 ── */
+  .tl { padding: 14px; }
+  .tl-node { display: flex; gap: 10px; align-items: center; }
+  .tl-dot {
+    flex: 0 0 20px; height: 20px; border-radius: 50%; background: #2b6cf6;
+    color: #fff; font-size: 11px; font-weight: 700; display: flex;
+    align-items: center; justify-content: center;
+  }
+  .tl-dot.end { background: #1a1a1a; }
+  .tl-name { font-size: 13px; font-weight: 600; }
+  .tl-edge {
+    margin: 2px 0 2px 9px; padding: 5px 0 5px 21px;
+    border-left: 2px solid #d6dce6; font-size: 12px; color: #888;
+  }
+  .tl-total {
+    margin-top: 12px; padding-top: 12px; border-top: 1px solid #eceef1;
+    display: flex; justify-content: space-between; align-items: baseline;
+  }
+  .tl-total b { font-size: 17px; }
+
+  .inspector { margin: 0 20px 20px; }
+  .insp-grid { display: grid; grid-template-columns: 1fr 1fr; }
+  .insp-col { border-right: 1px solid #eceef1; }
+  .insp-col:last-child { border-right: 0; }
+  .insp-col h3 {
+    margin: 0; padding: 8px 12px; font-size: 11px; color: #888; font-weight: 600;
+    background: #fafbfc; border-bottom: 1px solid #eceef1;
+  }
+  pre {
+    margin: 0; padding: 12px; font: 11.5px/1.55 "SF Mono", Menlo, monospace;
+    white-space: pre-wrap; word-break: break-all; max-height: 280px; overflow-y: auto;
+    color: #3a3a3a;
+  }
+  .url { color: #2b6cf6; }
+
+  /* 이동수단 선택 */
+  .modes { display: flex; gap: 0; margin-top: 9px; border: 1px solid #d6d9df; border-radius: 6px; overflow: hidden; }
+  .mode-btn {
+    flex: 1; padding: 7px; border: 0; background: #fff; cursor: pointer;
+    font: inherit; font-size: 12.5px; color: #777;
+  }
+  .mode-btn.on { background: #2b6cf6; color: #fff; font-weight: 600; }
+
+  /* 길안내 */
+  .guides { border-top: 1px solid #eceef1; max-height: 260px; overflow-y: auto; }
+  .guides > h4 {
+    margin: 0; padding: 9px 14px; font-size: 11px; font-weight: 600; color: #888;
+    background: #fafbfc; position: sticky; top: 0;
+  }
+  .g-leg {
+    padding: 6px 14px 3px; font-size: 11px; font-weight: 700; color: #666;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .g-row {
+    padding: 4px 14px 4px 30px; font-size: 12.5px; color: #444;
+    display: flex; gap: 8px; border-left: 2px solid transparent;
+  }
+  .g-row:hover { background: #f7f9fc; }
+  .g-dist { flex: 0 0 46px; text-align: right; color: #aaa; font-size: 11.5px; }
+
+  /* 구간 방향 화살표 (지도 위) */
+  .arw {
+    width: 0; height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-bottom: 11px solid #2b6cf6;
+    filter: drop-shadow(0 0 1.5px rgba(255,255,255,.95));
+  }
+
+  /* 타임라인 구간 색 표시 */
+  .tl-edge { display: flex; align-items: center; gap: 7px; }
+  .swatch { width: 9px; height: 9px; border-radius: 2px; flex: 0 0 9px; }
+
+  /* 지도 위 순번 마커 */
+  .pin {
+    width: 24px; height: 24px; border-radius: 50%; background: #2b6cf6;
+    color: #fff; font: 700 12px/24px -apple-system, sans-serif; text-align: center;
+    border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.35);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>leftover<span>API 연동 테스트</span></h1>
+  <div class="loc">
+    <label>위도</label> <input id="lat" value="37.4979">
+    <label>경도</label> <input id="lng" value="127.0276">
+    <label>반경(m)</label> <input id="radius" value="1000" style="width:72px">
+    <button class="preset" data-y="37.4979" data-x="127.0276">강남역</button>
+    <button class="preset" data-y="37.5568" data-x="126.9237">홍대입구</button>
+    <button class="preset" data-y="37.5759" data-x="126.9769">광화문</button>
+    <button class="preset" data-y="37.5445" data-x="127.0557">성수</button>
+  </div>
+</header>
+
+<nav>
+  <button class="on" data-step="1">STEP 1 · 주변 스팟</button>
+  <button data-step="2">STEP 2 · 실시간</button>
+  <button data-step="3">STEP 3 · 길찾기</button>
+</nav>
+
+<main>
+  <div class="panel">
+    <h2 id="panelTitle">STEP 1 — 카카오 로컬 + TourAPI</h2>
+    <div class="actions">
+      <button class="go" id="go">스팟 불러오기</button>
+      <div class="hint" id="hint">현재 좌표 반경 안의 카페 · 관광지 · 문화시설을 가져옵니다.</div>
+      <div id="step3opts" style="display:none">
+        <div class="modes">
+          <button class="mode-btn on" data-mode="walk">도보</button>
+          <button class="mode-btn" data-mode="car">자동차</button>
+        </div>
+        <div class="chk">
+          <input type="checkbox" id="returnToStart" checked>
+          <label for="returnToStart">출발지로 복귀</label>
+          <button class="clear" id="clearStops">선택 해제</button>
+        </div>
+      </div>
+    </div>
+    <div id="result"><div class="empty">아직 불러온 데이터가 없습니다.</div></div>
+  </div>
+
+  <div class="panel">
+    <h2>지도</h2>
+    <div id="map"></div>
+  </div>
+</main>
+
+<div class="panel inspector">
+  <h2>API Inspector — 서버가 실제로 부른 요청과 받은 응답</h2>
+  <div class="insp-grid">
+    <div class="insp-col">
+      <h3>요청</h3>
+      <pre id="reqOut" class="url">—</pre>
+    </div>
+    <div class="insp-col">
+      <h3>응답 (raw)</h3>
+      <pre id="rawOut">—</pre>
+    </div>
+  </div>
+</div>
+
+<script>
+// ───────────────────────────────────────────────
+//  상태
+// ───────────────────────────────────────────────
+const state = {
+  step: 1,
+  spots: [],      // STEP 1 결과
+  stops: [],      // 코스에 담은 스팟 인덱스 (담은 순서대로)
+  mode: 'walk',   // 'walk' 도보 · 'car' 자동차
+  realtime: null,
+  route: null,
+};
+
+let map = null, spotMarkers = [], pinOverlays = [], routeLines = [], arrowOverlays = [], meMarker = null;
+
+// 구간별 색. 순서대로 돌려 쓴다
+const LEG_COLORS = ['#2b6cf6', '#e8590c', '#0ca678', '#ae3ec9', '#f08c00', '#1098ad', '#e03131', '#5f3dc4'];
+
+const $ = id => document.getElementById(id);
+const coords = () => ({
+  lat: parseFloat($('lat').value),
+  lng: parseFloat($('lng').value),
+  radius: parseInt($('radius').value, 10),
+});
+
+
+// ───────────────────────────────────────────────
+//  지도 그리기
+// ───────────────────────────────────────────────
+
+// 현재 위치 마커
+function drawMe() {
+  if (!map) return;
+  const { lat, lng } = coords();
+  const pos = new kakao.maps.LatLng(lat, lng);
+
+  if (meMarker) meMarker.setMap(null);
+  meMarker = new kakao.maps.Marker({
+    position: pos, map, zIndex: 10,
+    image: new kakao.maps.MarkerImage(
+      'data:image/svg+xml;base64,' + btoa(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22">' +
+        '<circle cx="11" cy="11" r="7" fill="#2b6cf6" stroke="#fff" stroke-width="3"/></svg>'
+      ),
+      new kakao.maps.Size(22, 22)
+    ),
+  });
+  map.setCenter(pos);
+}
+
+// 스팟 마커 전체
+function drawSpots() {
+  if (!map) return;
+  spotMarkers.forEach(m => m.setMap(null));
+  spotMarkers = state.spots.map((s, i) => {
+    const mk = new kakao.maps.Marker({
+      position: new kakao.maps.LatLng(s.lat, s.lng), map, title: s.name,
+    });
+    kakao.maps.event.addListener(mk, 'click', () => toggleStop(i));
+    return mk;
+  });
+}
+
+// 경로를 그린 뒤에는 코스에 담은 스팟만 지도에 남긴다
+function updateSpotVisibility() {
+  if (!map) return;
+  const onlyStops = state.step === 3 && !!state.route;
+  spotMarkers.forEach((mk, i) => {
+    mk.setMap(onlyStops && !state.stops.includes(i) ? null : map);
+  });
+}
+
+// 코스에 담은 스팟 위에 순번 뱃지
+function drawPins() {
+  if (!map) return;
+  pinOverlays.forEach(o => o.setMap(null));
+  pinOverlays = state.stops.map((spotIdx, order) => {
+    const s = state.spots[spotIdx];
+    const el = document.createElement('div');
+    el.className = 'pin';
+    el.textContent = order + 1;
+    el.style.background = LEG_COLORS[order % LEG_COLORS.length];   // 그 스팟으로 "가는" 구간 색
+    return new kakao.maps.CustomOverlay({
+      position: new kakao.maps.LatLng(s.lat, s.lng), content: el, map, zIndex: 20,
+    });
+  });
+}
+
+// 두 점 사이의 진행 방향 (북쪽 0도, 시계방향)
+function bearing(a, b) {
+  return Math.atan2(b.lng - a.lng, b.lat - a.lat) * 180 / Math.PI;
+}
+
+// 구간 위에 진행 방향 화살표를 몇 개 얹는다
+function addArrows(path, color) {
+  if (path.length < 2) return;
+
+  // 구간을 4등분한 지점에 화살표를 놓는다
+  [0.25, 0.5, 0.75].forEach(t => {
+    const i = Math.max(1, Math.floor(path.length * t));
+    const prev = path[i - 1], cur = path[i];
+
+    const el = document.createElement('div');
+    el.className = 'arw';
+    el.style.borderBottomColor = color;
+    el.style.transform = 'rotate(' + bearing(prev, cur).toFixed(1) + 'deg)';
+
+    arrowOverlays.push(new kakao.maps.CustomOverlay({
+      position: new kakao.maps.LatLng(cur.lat, cur.lng),
+      content: el, map, zIndex: 15,
+    }));
+  });
+}
+
+// 구간마다 다른 색으로 선을 그리고 방향 화살표를 얹는다
+function drawRoute(legs) {
+  if (!map) return;
+
+  routeLines.forEach(l => l.setMap(null));
+  arrowOverlays.forEach(o => o.setMap(null));
+  routeLines = [];
+  arrowOverlays = [];
+  if (!legs || !legs.length) return;
+
+  const bounds = new kakao.maps.LatLngBounds();
+
+  legs.forEach((leg, i) => {
+    const color = LEG_COLORS[i % LEG_COLORS.length];
+    const latlngs = leg.path.map(p => new kakao.maps.LatLng(p.lat, p.lng));
+
+    const line = new kakao.maps.Polyline({
+      path: latlngs,
+      strokeWeight: 6,
+      strokeColor: color,
+      strokeOpacity: 0.9,
+      endArrow: true,          // 구간 끝에 화살촉 (지원되는 경우)
+      zIndex: 5,
+    });
+    line.setMap(map);
+    routeLines.push(line);
+
+    addArrows(leg.path, color);
+    latlngs.forEach(ll => bounds.extend(ll));
+  });
+
+  map.setBounds(bounds);
+  updateSpotVisibility();
+}
+
+// 지도 초기화. SDK가 없으면 안내만 띄우고 넘어간다
+function initMap() {
+  if (!window.kakao || !window.kakao.maps) {
+    $('map').innerHTML =
+      '<div class="map-err"><b>지도 SDK를 불러오지 못했습니다.</b><br><br>' +
+      'developers.kakao.com → 내 애플리케이션 → 앱 설정<br>' +
+      '→ 플랫폼 키 → JavaScript 키 → JavaScript SDK 도메인<br>' +
+      '에 <b>http://localhost:3000</b> 을 등록하세요.<br><br>' +
+      '<span style="color:#bbb">지도 없이도 STEP 1~3 버튼과 Inspector는 동작합니다.</span></div>';
+    return;
+  }
+  kakao.maps.load(() => {
+    const { lat, lng } = coords();
+    map = new kakao.maps.Map($('map'), {
+      center: new kakao.maps.LatLng(lat, lng), level: 5,
+    });
+    drawMe();
+  });
+}
+
+
+// ───────────────────────────────────────────────
+//  코스 담기
+// ───────────────────────────────────────────────
+
+// 스팟을 코스에 넣거나 뺀다. 넣은 순서가 방문 순서가 된다
+function toggleStop(i) {
+  const at = state.stops.indexOf(i);
+  at >= 0 ? state.stops.splice(at, 1) : state.stops.push(i);
+  state.route = null;
+  drawRoute(null);
+  drawPins();
+  updateSpotVisibility();
+  render();
+}
+
+
+// ───────────────────────────────────────────────
+//  탭
+// ───────────────────────────────────────────────
+const TAB = {
+  1: { title: 'STEP 1 — 카카오 로컬 + TourAPI', btn: '스팟 불러오기',
+       hint: '현재 좌표 반경 안의 카페 · 관광지 · 문화시설을 가져옵니다.' },
+  2: { title: 'STEP 2 — 기상청 + 서울 실시간 도시데이터', btn: '실시간 데이터 붙이기',
+       hint: '날씨와 이 지역의 실시간 혼잡도를 가져옵니다.' },
+  3: { title: 'STEP 3 — 카카오모빌리티 길찾기', btn: '경로 그리기',
+       hint: '스팟을 누른 순서대로 도는 경로를 계산합니다.' },
+};
+
+document.querySelectorAll('nav button').forEach(b => {
+  b.onclick = () => {
+    document.querySelectorAll('nav button').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    state.step = +b.dataset.step;
+
+    const t = TAB[state.step];
+    $('panelTitle').textContent = t.title;
+    $('go').textContent = t.btn;
+    $('hint').textContent = t.hint;
+    $('step3opts').style.display = state.step === 3 ? 'block' : 'none';
+    updateSpotVisibility();
+    render();
+  };
+});
+
+document.querySelectorAll('.preset').forEach(b => {
+  b.onclick = () => {
+    $('lat').value = b.dataset.y;
+    $('lng').value = b.dataset.x;
+    drawMe();
+  };
+});
+
+$('clearStops').onclick = () => {
+  state.stops = [];
+  state.route = null;
+  drawPins();
+  drawRoute(null);
+  updateSpotVisibility();
+  render();
+};
+
+document.querySelectorAll('.mode-btn').forEach(b => {
+  b.onclick = () => {
+    document.querySelectorAll('.mode-btn').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    state.mode = b.dataset.mode;
+    state.route = null;
+    drawRoute(null);
+    updateSpotVisibility();
+    render();
+  };
+});
+
+
+// ───────────────────────────────────────────────
+//  API 호출 — 전부 우리 서버(server.ts)를 거친다
+// ───────────────────────────────────────────────
+async function callApi(path, params) {
+  const url = path + '?' + new URLSearchParams(params);
+
+  $('reqOut').textContent = 'GET ' + url + '\n  (브라우저 → server.ts)';
+  $('rawOut').textContent = '불러오는 중…';
+
+  const res = await fetch(url);
+  const json = await res.json();
+
+  // server.ts 가 실제로 부른 외부 API 요청을 함께 내려준다
+  if (json.requested) {
+    $('reqOut').textContent =
+      'GET ' + url + '\n  (브라우저 → server.ts)\n\n' +
+      '─── server.ts → 외부 API ' + json.requested.length + '건 ───\n\n' +
+      json.requested.join('\n\n');
+  }
+  $('rawOut').textContent = JSON.stringify(json.raw ?? json, null, 2);
+
+  if (!res.ok || json.error) throw new Error(json.error || '요청 실패');
+  return json;
+}
+
+$('go').onclick = async () => {
+  $('go').disabled = true;
+  try {
+    if (state.step === 1) await runSpots();
+    if (state.step === 2) await runRealtime();
+    if (state.step === 3) await runDirections();
+  } catch (e) {
+    $('result').innerHTML = '<div class="empty">에러: ' + esc(e.message) + '</div>';
+  } finally {
+    $('go').disabled = false;
+  }
+};
+
+// ── STEP 1 ──
+async function runSpots() {
+  const { lat, lng, radius } = coords();
+  drawMe();
+
+  const data = await callApi('/api/spots', { lat, lng, radius });
+  state.spots = data.spots || [];
+  state.stops = [];
+  state.route = null;
+
+  drawSpots();
+  drawPins();
+  drawRoute(null);
+  updateSpotVisibility();
+  render();
+}
+
+// ── STEP 2 ──
+async function runRealtime() {
+  const { lat, lng } = coords();
+  state.realtime = await callApi('/api/realtime', { lat, lng });
+  render();
+}
+
+// ── STEP 3 ──
+async function runDirections() {
+  if (!state.stops.length) {
+    throw new Error('스팟을 하나 이상 눌러 코스에 담아주세요. 누른 순서대로 경로가 만들어집니다.');
+  }
+
+  const { lat, lng } = coords();
+  const me = lng + ',' + lat;
+
+  // 출발(현재 위치) → 담은 스팟들 → [복귀]
+  const points = [
+    me,
+    ...state.stops.map(i => state.spots[i].lng + ',' + state.spots[i].lat),
+    ...($('returnToStart').checked ? [me] : []),
+  ].join('|');
+
+  state.route = await callApi('/api/directions', { points, mode: state.mode });
+  drawRoute(state.route.legs);
+  render();
+}
+
+
+// ───────────────────────────────────────────────
+//  렌더
+// ───────────────────────────────────────────────
+function render() {
+  const box = $('result');
+
+  if (state.step === 2) return renderRealtime(box);
+  if (state.step === 3) return renderRoute(box);
+  return renderSpots(box);
+}
+
+// STEP 1 · 스팟 목록
+function renderSpots(box) {
+  if (!state.spots.length) {
+    box.innerHTML = '<div class="empty">아직 불러온 데이터가 없습니다.</div>';
+    return;
+  }
+
+  box.innerHTML = '<div class="list">' + state.spots.map((s, i) => {
+    const order = state.stops.indexOf(i);
+    return '<div class="spot ' + (order >= 0 ? 'sel' : '') + '" onclick="toggleStop(' + i + ')">' +
+      '<div class="ord ' + (order >= 0 ? '' : 'off') + '">' + (order >= 0 ? order + 1 : '+') + '</div>' +
+      '<div>' +
+        '<div class="nm">' +
+          '<span class="tag ' + (s.source === 'kakao' ? 'kakao">카카오' : 'tour">TourAPI') + '</span>' +
+          esc(s.name) +
+        '</div>' +
+        '<div class="meta">' + esc(s.category ?? '') + ' · ' + (s.distance ?? '?') + 'm</div>' +
+      '</div>' +
+    '</div>';
+  }).join('') + '</div>';
+}
+
+// STEP 2 · 실시간 카드
+function renderRealtime(box) {
+  const r = state.realtime;
+  if (!r) {
+    box.innerHTML = '<div class="empty">버튼을 눌러 실시간 데이터를 불러오세요.</div>';
+    return;
+  }
+
+  const c = r.congestion;
+  box.innerHTML = '<div class="cards">' +
+    card('날씨', (r.weather?.temp ?? '-') + '°C',
+         (r.weather?.sky ?? '') + ' · 강수확률 ' + (r.weather?.pop ?? '-') + '%') +
+    (c ? card('혼잡도 · ' + c.area, c.level, c.population) : '') +
+    (c?.forecast ? card('예측 · ' + c.forecast.time, c.forecast.level, '도착 시점 예상') : '') +
+  '</div>';
+}
+
+// STEP 3 · 경로 타임라인
+function renderRoute(box) {
+  if (!state.spots.length) {
+    box.innerHTML = '<div class="empty">STEP 1에서 스팟을 먼저 불러오세요.</div>';
+    return;
+  }
+  if (!state.stops.length) {
+    box.innerHTML = '<div class="empty">STEP 1 탭에서 스팟을 눌러 코스에 담아주세요.<br>' +
+                    '누른 순서가 방문 순서가 됩니다.</div>';
+    return;
+  }
+
+  // 아직 경로를 안 뽑았으면 담은 목록만 보여준다
+  const r = state.route;
+  const names = ['현재 위치', ...state.stops.map(i => state.spots[i].name)];
+  if ($('returnToStart').checked) names.push('현재 위치 복귀');
+
+  let html = '<div class="tl">';
+  names.forEach((name, i) => {
+    if (i > 0) {
+      const leg = r?.legs?.[i - 1];
+      const color = LEG_COLORS[(i - 1) % LEG_COLORS.length];
+      html += '<div class="tl-edge">' +
+        '<span class="swatch" style="background:' + color + '"></span>' +
+        (leg ? Math.round(leg.duration / 60) + '분 · ' + (leg.distance / 1000).toFixed(1) + 'km' : '—') +
+        '</div>';
+    }
+    const last = i === names.length - 1;
+    html += '<div class="tl-node">' +
+      '<div class="tl-dot ' + (i === 0 || last ? 'end' : '') + '">' +
+        (i === 0 ? '출' : last && $('returnToStart').checked ? '복' : i) +
+      '</div>' +
+      '<div class="tl-name">' + esc(name) + '</div>' +
+    '</div>';
+  });
+
+  if (r) {
+    html += '<div class="tl-total"><span style="font-size:12px;color:#999">총 ' +
+      (r.distance / 1000).toFixed(1) + 'km</span>' +
+      '<span><b>' + Math.round(r.duration / 60) + '분</b> · 도착 ' + r.arriveAt + '</span></div>';
+  } else {
+    html += '<div class="tl-total"><span style="font-size:12px;color:#999">' +
+      state.stops.length + '곳 담김</span>' +
+      '<span style="font-size:12px;color:#2b6cf6">경로 그리기를 누르세요</span></div>';
+  }
+
+  html += '</div>';
+
+  // 길안내 (있을 때만)
+  if (r?.guides?.length) {
+    html += '<div class="guides"><h4>길안내 ' + r.guides.length + '단계 · ' +
+            (r.mode === 'walk' ? '도보' : '자동차') + '</h4>';
+
+    let lastLeg = -1;
+    for (const g of r.guides) {
+      const color = LEG_COLORS[g.leg % LEG_COLORS.length];
+      if (g.leg !== lastLeg) {
+        html += '<div class="g-leg"><span class="swatch" style="background:' + color + '"></span>' +
+                '구간 ' + (g.leg + 1) + '</div>';
+        lastLeg = g.leg;
+      }
+      html += '<div class="g-row" style="border-left-color:' + color + '">' +
+              '<span class="g-dist">' + (g.distance ? g.distance + 'm' : '') + '</span>' +
+              '<span>' + esc(g.text) + '</span></div>';
+    }
+    html += '</div>';
+  }
+
+  box.innerHTML = html;
+}
+
+function card(k, v, s) {
+  return '<div class="card"><div class="k">' + esc(k) + '</div>' +
+         '<div class="v">' + esc(String(v)) + '</div>' +
+         (s ? '<div class="s">' + esc(String(s)) + '</div>' : '') + '</div>';
+}
+
+function esc(t) {
+  return String(t).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+}
+
+
+// 버튼 바인딩이 모두 끝난 뒤 마지막에 지도를 켠다
+initMap();
+</script>
+</body>
+</html>
